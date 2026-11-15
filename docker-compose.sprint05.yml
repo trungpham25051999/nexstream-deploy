@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: nexstream
+      POSTGRES_USER: nexstream_admin
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes:
+      - ./postgres/migrations:/docker-entrypoint-initdb.d:ro
+    networks: [registry]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexstream_admin -d nexstream"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  nexstream-ingest:
+    image: nexstream-ingest:sprint05-local
+    command: ["--port", "9000", "--kafka-bootstrap", "redpanda:9092", "--postgres", "host=postgres dbname=nexstream user=nexstream_admin passfile=/run/secrets/pgpass"]
+    secrets:
+      - source: postgres_pgpass
+        target: pgpass
+    networks: [edge_backend, registry, kafka]
+    expose: ["9000"]
+
+  haproxy:
+    image: haproxy:2.9.12-alpine
+    ports: ["127.0.0.1:9443:9443"]
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    secrets:
+      - source: tls_server_pem
+        target: nexstream_server.pem
+    networks: [edge_backend]
+    depends_on: [nexstream-ingest]
+
+networks:
+  edge_backend:
+    internal: true
+  registry:
+    internal: true
+  kafka:
+    external: true
+
+secrets:
+  postgres_password:
+    file: ${NEXSTREAM_POSTGRES_PASSWORD_FILE:?set runtime password file}
+  postgres_pgpass:
+    file: ${NEXSTREAM_POSTGRES_PGPASS_FILE:?set runtime pgpass file}
+  tls_server_pem:
+    file: ${NEXSTREAM_TLS_SERVER_PEM:?set runtime PEM path}
