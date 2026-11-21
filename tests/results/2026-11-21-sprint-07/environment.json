@@ -1,0 +1,17 @@
+{
+  "date": "2026-11-21",
+  "os": "Debian Linux 6.1.0-40-amd64 x86_64",
+  "compiler": "GCC 12.2.0",
+  "cmake": "3.25.1",
+  "docker": "20.10.24",
+  "compose_local_binary": "2.29.7",
+  "clickhouse_server_observed": "24.3.18.7",
+  "redpanda_image": "docker.redpanda.com/redpandadata/redpanda:v24.3.18",
+  "postgres_image": "postgres:16-bookworm",
+  "haproxy_image": "haproxy:2.9.12-alpine",
+  "libcurl": "7.88.1",
+  "librdkafka": "2.0.2",
+  "nlohmann_json": "3.11.2",
+  "deployment_scope": "local development and ephemeral fixtures",
+  "performance_benchmark": "NOT RUN"
+}
