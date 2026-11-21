@@ -1,0 +1,72 @@
+# Development only; runtime credentials/certs must be provisioned before startup.
+services:
+  postgres:
+    extends: {file: docker-compose.sprint05.yml, service: postgres}
+  nexstream-ingest:
+    extends: {file: docker-compose.sprint05.yml, service: nexstream-ingest}
+    image: nexstream-ingest:sprint07-local
+    environment: {NEXSTREAM_LISTEN_ADDRESS: 0.0.0.0}
+    build: {context: .., dockerfile: nexstream-deploy/Dockerfile.sprint07, args: {SERVICE: nexstream-ingest}}
+    command: [/bin/sh, -ec, "umask 077; cp /run/secrets/pgpass /tmp/nexstream.pgpass; exec nexstream-ingest --port 9000 --kafka-bootstrap redpanda:9092 --postgres 'host=postgres dbname=nexstream user=nexstream_admin passfile=/tmp/nexstream.pgpass'"]
+  haproxy:
+    extends: {file: docker-compose.sprint05.yml, service: haproxy}
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.18
+    command: [redpanda, start, --overprovisioned, --smp, '1', --memory, 512M, --reserve-memory, 0M, --check=false, --kafka-addr, '0.0.0.0:9092', --advertise-kafka-addr, 'redpanda:9092']
+    networks: [kafka]
+    volumes: [redpanda_data:/var/lib/redpanda/data]
+  bootstrap-topics:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.18
+    entrypoint: [/bin/sh, /bootstrap/bootstrap-topics.sh]
+    volumes: ['./scripts:/bootstrap:ro']
+    networks: [kafka]
+    depends_on: [redpanda]
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    environment: {CLICKHOUSE_USER: query_dev, CLICKHOUSE_PASSWORD_FILE: /run/secrets/clickhouse_password, CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: '1'}
+    secrets: [clickhouse_password]
+    volumes: ['clickhouse_data:/var/lib/clickhouse', './clickhouse:/docker-entrypoint-initdb.d:ro']
+    networks: [kafka, analytics]
+    ulimits: {nofile: {soft: 262144, hard: 262144}}
+  query:
+    image: nexstream-query:sprint07-local
+    mem_limit: 256m
+    pids_limit: 64
+    build: {context: .., dockerfile: nexstream-deploy/Dockerfile.sprint07, args: {SERVICE: nexstream-query}}
+    # Loopback-bound API is accessed through docker exec until listen-address config is added.
+    command: [nexstream-query, 'http://clickhouse:8123']
+    environment: {NEXSTREAM_CH_USER: query_dev, NEXSTREAM_CH_PASSWORD_FILE: /run/secrets/clickhouse_password}
+    secrets: [clickhouse_password]
+    networks: [analytics]
+  processor:
+    image: nexstream-processor:sprint07-local
+    mem_limit: 256m
+    pids_limit: 64
+    build: {context: .., dockerfile: nexstream-deploy/Dockerfile.sprint07, args: {SERVICE: nexstream-processor}}
+    # The Kafka committed prefix is authoritative; diagnostic files must be per instance.
+    command: [nexstream-processor, 'redpanda:9092', nexstream.processor.v1, '90', '90', '3', /tmp/processor.checkpoint]
+    networks: [kafka]
+  agent:
+    image: nexstream-publisher:sprint07-local
+    build: {context: .., dockerfile: nexstream-deploy/Dockerfile.sprint07, args: {SERVICE: nexstream-publisher}}
+    network_mode: 'service:haproxy'
+    command: [nexstream-agent, --address, '127.0.0.1', --port, '9443', --tls-hostname, localhost, --ca-file, /run/secrets/agent_ca, --queue-db, /state/agent.sqlite, --agent-id, dev-agent, --host-id, dev-host, --key-id, dev-key, --secret-file, /run/secrets/agent_secret]
+    secrets: [agent_ca, agent_secret]
+    volumes: [agent_state:/state]
+networks:
+  edge_backend: {internal: true}
+  registry: {internal: true}
+  kafka: {internal: true}
+  analytics: {internal: true}
+volumes:
+  redpanda_data:
+  clickhouse_data:
+  processor_state:
+  agent_state:
+secrets:
+  postgres_password: {file: '${NEXSTREAM_POSTGRES_PASSWORD_FILE:?set runtime file}'}
+  postgres_pgpass: {file: '${NEXSTREAM_POSTGRES_PGPASS_FILE:?set runtime file}'}
+  tls_server_pem: {file: '${NEXSTREAM_TLS_SERVER_PEM:?set runtime file}'}
+  clickhouse_password: {file: '${NEXSTREAM_CLICKHOUSE_PASSWORD_FILE:?set runtime file}'}
+  agent_ca: {file: '${NEXSTREAM_AGENT_CA_FILE:?set runtime file}'}
+  agent_secret: {file: '${NEXSTREAM_AGENT_SECRET_FILE:?set runtime file}'}
