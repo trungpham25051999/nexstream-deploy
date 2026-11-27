@@ -1,5 +1,7 @@
 # nexstream-deploy
 
+[![CI](https://github.com/trungpham25051999/nexstream-deploy/actions/workflows/ci.yml/badge.svg)](https://github.com/trungpham25051999/nexstream-deploy/actions/workflows/ci.yml) ![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 NexStream architecture, deployment and operational repository. Six local repositories have been
 initialized; Sprint 01 contracts, Sprint 02 Gateway Core, Sprint 03 Publisher Transport and Sprint
 04 asynchronous Kafka delivery and Sprint 05 registry authentication/TLS termination are
