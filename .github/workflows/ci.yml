@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Docker Compose files
+        # Secret file paths are required at runtime; placeholders are enough for schema validation.
+        env:
+          NEXSTREAM_POSTGRES_PASSWORD_FILE: /dev/null
+          NEXSTREAM_POSTGRES_PGPASS_FILE: /dev/null
+          NEXSTREAM_TLS_SERVER_PEM: /dev/null
+          NEXSTREAM_CLICKHOUSE_PASSWORD_FILE: /dev/null
+          NEXSTREAM_AGENT_CA_FILE: /dev/null
+          NEXSTREAM_AGENT_SECRET_FILE: /dev/null
+        run: |
+          for f in docker-compose.*.yml; do
+            echo "::group::$f"
+            docker compose -f "$f" config --quiet
+            echo "::endgroup::"
+          done
+
+      - name: ShellCheck scripts
+        run: shellcheck scripts/*.sh
+
+      - name: Python test syntax
+        run: python3 -m py_compile tests/*.py
